@@ -22,8 +22,22 @@ class GeminiService:
         self.model_name = "gemini-3.1-flash-lite-preview"
 
     def _get_client(self, api_key: str = None):
-        # Use provided key or fallback to environment variable
-        final_key = api_key or os.getenv("GOOGLE_API_KEY")
+        # 1. Use provided key from session state
+        if api_key:
+            return genai.Client(api_key=api_key)
+            
+        # 2. Fallback to Environment Variable
+        final_key = os.getenv("GOOGLE_API_KEY")
+        
+        # 3. Fallback to Streamlit Secrets (if running in Streamlit)
+        if not final_key:
+            try:
+                import streamlit as st
+                if "GOOGLE_API_KEY" in st.secrets:
+                    final_key = st.secrets["GOOGLE_API_KEY"]
+            except (ImportError, Exception):
+                pass
+                
         if not final_key:
             return None
         return genai.Client(api_key=final_key)

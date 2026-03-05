@@ -7,8 +7,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 STORAGE_DIR = "app/storage"
+# Try load from env first
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Fallback to Streamlit Secrets for cloud deployment
+if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        import streamlit as st
+        if "SUPABASE_URL" in st.secrets:
+            SUPABASE_URL = st.secrets["SUPABASE_URL"]
+        if "SUPABASE_KEY" in st.secrets:
+            SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    except (ImportError, Exception):
+        pass
 
 class HistoryService:
     def __init__(self):

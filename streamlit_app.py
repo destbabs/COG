@@ -82,11 +82,14 @@ with st.sidebar:
 
 # Load History
 @st.cache_data(show_spinner=False)
-def load_chat_history(session_id):
+def load_chat_history(session_id, refresh_trigger):
     # We use asyncio.run because history_service is async
     return asyncio.run(history_service.get_history(session_id))
 
-history = load_chat_history(st.session_state.session_id)
+if "refresh_counter" not in st.session_state:
+    st.session_state.refresh_counter = 0
+
+history = load_chat_history(st.session_state.session_id, st.session_state.refresh_counter)
 
 # Display Messages
 if history:
@@ -113,7 +116,6 @@ if prompt := st.chat_input("Challenge me..."):
         
         # Handle async execution in streamlit
         try:
-            # Simple async runner for Streamlit
             async def run_chat():
                 api_key = st.session_state.get("custom_api_key")
                 async for chunk, model_name in gemini_service.get_streaming_response(prompt, history, api_key=api_key):
@@ -132,31 +134,27 @@ if prompt := st.chat_input("Challenge me..."):
                         chat_state["full_response"], 
                         model_name=chat_state["used_model"]
                     )
+                    return True # Success
+                return False
 
-            # Use more robust async execution
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            if loop.is_running():
-                # This is unlikely in a standard Streamlit script run but good for safety
-                import threading
-                def thread_func():
-                    new_loop = asyncio.new_event_loop()
-                    new_loop.run_until_complete(run_chat())
-                    new_loop.close()
-                thread = threading.Thread(target=thread_func)
-                thread.start()
-                thread.join()
-            else:
-                loop.run_until_complete(run_chat())
+            # Use simple asyncio.run for the streaming task
+            success = asyncio.run(run_chat())
 
             if chat_state["used_model"] and chat_state["used_model"] != "System":
                 st.markdown(f'<div class="model-tag">Responded by: {chat_state["used_model"]}</div>', unsafe_allow_html=True)
-                st.cache_data.clear() # Refresh history on next rerun
-                st.rerun() # Rerun to refresh the sidebar title
+                
+                # Increment refresh counter to update history view
+                st.session_state.refresh_counter += 1
+                
+                # Check if this was the first user message (to update sidebar title)
+                user_msgs = [m for m in history if m["role"] == "user"]
+                if len(user_msgs) == 0:
+                    st.rerun() # Hard rerun to refresh sidebar
+                else:
+                    # Soft refresh: historical messages will now include the new one 
+                    # because refresh_counter changed the cache key.
+                    # We need one rerun to trigger the reload_chat_history call at the top.
+                    st.rerun()
             elif chat_state["used_model"] == "System":
                 st.error(chat_state["full_response"])
 
