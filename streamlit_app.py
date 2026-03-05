@@ -30,22 +30,34 @@ st.subheader("Your Intellectual Sparring Partner")
 # Initialize Session State
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "last_loaded_session" not in st.session_state:
+    st.session_state.last_loaded_session = None
 
 # Sidebar for session management
 with st.sidebar:
     st.header("Chat Sessions")
     
+    # Supabase Connection Status
+    if history_service.supabase:
+        st.success("✅ Supabase Connected")
+    else:
+        st.warning("⚠️ Local Mode (Supabase not found)")
+
     if st.button("➕ New Chat", use_container_width=True):
         st.session_state.session_id = str(uuid.uuid4())
-        st.cache_data.clear() # Clear cache for new session
+        st.session_state.messages = []
         st.rerun()
     
     st.divider()
     
     # List existing sessions with titles
-    # We use a helper to run the async method
     def get_sessions():
-        return asyncio.run(history_service.get_all_sessions())
+        try:
+            return asyncio.run(history_service.get_all_sessions())
+        except Exception:
+            return []
     
     sessions = get_sessions()
     
@@ -53,19 +65,23 @@ with st.sidebar:
         cols = st.columns([0.8, 0.2])
         is_active = session["id"] == st.session_state.session_id
         
+        # Display active session clearly
         button_label = f"{'⭐ ' if is_active else ''}{session['title']}"
         
         if cols[0].button(button_label, key=f"btn_{session['id']}", use_container_width=True):
             if session["id"] != st.session_state.session_id:
                 st.session_state.session_id = session["id"]
-                st.cache_data.clear()
+                st.session_state.messages = [] # Force reload
                 st.rerun()
                 
         if is_active:
             if cols[1].button("🗑️", key=f"del_{session['id']}"):
-                asyncio.run(history_service.delete_history(session["id"]))
+                try:
+                    asyncio.run(history_service.delete_history(session["id"]))
+                except Exception:
+                    pass
                 st.session_state.session_id = str(uuid.uuid4())
-                st.cache_data.clear()
+                st.session_state.messages = []
                 st.rerun()
 
     st.divider()
@@ -80,22 +96,24 @@ with st.sidebar:
     st.divider()
     st.info("COG doesn't give answers. It helps you find them.")
 
-# Load History
-@st.cache_data(show_spinner=False)
-def load_chat_history(session_id, refresh_trigger):
-    # We use asyncio.run because history_service is async
-    return asyncio.run(history_service.get_history(session_id))
+# Load History if session changed
+if st.session_state.last_loaded_session != st.session_state.session_id or not st.session_state.messages:
+    with st.spinner("Loading history..."):
+        try:
+            st.session_state.messages = asyncio.run(history_service.get_history(st.session_state.session_id))
+            st.session_state.last_loaded_session = st.session_state.session_id
+        except Exception as e:
+            st.error(f"Error loading history: {e}")
+            st.session_state.messages = []
 
-if "refresh_counter" not in st.session_state:
-    st.session_state.refresh_counter = 0
-
-history = load_chat_history(st.session_state.session_id, st.session_state.refresh_counter)
+history = st.session_state.messages
 
 # Display Messages
 if history:
     for msg in history:
         with st.chat_message(msg["role"]):
-            st.write(msg["parts"][0])
+            text = msg["parts"][0] if isinstance(msg["parts"], list) else msg["parts"]
+            st.write(text)
             if "model" in msg:
                 st.markdown(f'<div class="model-tag">Responded by: {msg["model"]}</div>', unsafe_allow_html=True)
 else:
@@ -103,60 +121,62 @@ else:
 
 # Chat Input
 if prompt := st.chat_input("Challenge me..."):
-    # Display user message
-    with st.chat_message("user"):
-        st.write(prompt)
+    # Append user message locally immediately
+    st.session_state.messages.append({"role": "user", "parts": [prompt]})
     
-    # Generate Assistant Response
+    # Force a rerun to show the user message while generating
+    st.rerun()
+
+# If there is a last message from user and no response yet, generate it
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    last_prompt = st.session_state.messages[-1]["parts"][0]
+    
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
+        full_response = ""
+        used_model = None
         
-        # Use a dict to store state as nonlocal won't work correctly at top level in Streamlit
-        chat_state = {"full_response": "", "used_model": None}
-        
-        # Handle async execution in streamlit
         try:
             async def run_chat():
+                nonlocal full_response, used_model
                 api_key = st.session_state.get("custom_api_key")
-                async for chunk, model_name in gemini_service.get_streaming_response(prompt, history, api_key=api_key):
-                    chat_state["full_response"] += chunk
-                    chat_state["used_model"] = model_name
-                    response_placeholder.markdown(chat_state["full_response"] + "▌")
+                # Use history EXCLUDING the last message we just added
+                context = st.session_state.messages[:-1]
                 
-                response_placeholder.markdown(chat_state["full_response"])
+                async for chunk, model_name in gemini_service.get_streaming_response(last_prompt, context, api_key=api_key):
+                    full_response += chunk
+                    used_model = model_name
+                    response_placeholder.markdown(full_response + "▌")
                 
-                # Save to history (only if it's not a system error message)
-                if chat_state["used_model"] != "System" and chat_state["full_response"]:
-                    await history_service.add_message(st.session_state.session_id, "user", prompt)
+                response_placeholder.markdown(full_response)
+                return True
+
+            success = asyncio.run(run_chat())
+
+            if used_model and used_model != "System":
+                # Add to local state
+                st.session_state.messages.append({
+                    "role": "model", 
+                    "parts": [full_response], 
+                    "model": used_model
+                })
+                
+                # Persist to DB in background
+                async def persist():
+                    await history_service.add_message(st.session_state.session_id, "user", last_prompt)
                     await history_service.add_message(
                         st.session_state.session_id, 
                         "model", 
-                        chat_state["full_response"], 
-                        model_name=chat_state["used_model"]
+                        full_response, 
+                        model_name=used_model
                     )
-                    return True # Success
-                return False
-
-            # Use simple asyncio.run for the streaming task
-            success = asyncio.run(run_chat())
-
-            if chat_state["used_model"] and chat_state["used_model"] != "System":
-                st.markdown(f'<div class="model-tag">Responded by: {chat_state["used_model"]}</div>', unsafe_allow_html=True)
                 
-                # Increment refresh counter to update history view
-                st.session_state.refresh_counter += 1
-                
-                # Check if this was the first user message (to update sidebar title)
-                user_msgs = [m for m in history if m["role"] == "user"]
-                if len(user_msgs) == 0:
-                    st.rerun() # Hard rerun to refresh sidebar
-                else:
-                    # Soft refresh: historical messages will now include the new one 
-                    # because refresh_counter changed the cache key.
-                    # We need one rerun to trigger the reload_chat_history call at the top.
-                    st.rerun()
-            elif chat_state["used_model"] == "System":
-                st.error(chat_state["full_response"])
-
+                asyncio.run(persist())
+                st.rerun()
+            elif used_model == "System":
+                st.error(full_response)
+                # Remove the failed user message so they can try again
+                st.session_state.messages.pop()
         except Exception as e:
             st.error(f"Critical Application Error: {e}")
+            st.session_state.messages.pop()
