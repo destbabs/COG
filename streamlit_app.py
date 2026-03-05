@@ -133,25 +133,25 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
     
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
-        full_response = ""
-        used_model = None
         
         try:
             async def run_chat():
-                nonlocal full_response, used_model
+                _full_response = ""
+                _used_model = None
                 api_key = st.session_state.get("custom_api_key")
                 # Use history EXCLUDING the last message we just added
                 context = st.session_state.messages[:-1]
                 
                 async for chunk, model_name in gemini_service.get_streaming_response(last_prompt, context, api_key=api_key):
-                    full_response += chunk
-                    used_model = model_name
-                    response_placeholder.markdown(full_response + "▌")
+                    _full_response += chunk
+                    _used_model = model_name
+                    response_placeholder.markdown(_full_response + "▌")
                 
-                response_placeholder.markdown(full_response)
-                return True
+                response_placeholder.markdown(_full_response)
+                return _full_response, _used_model
 
-            success = asyncio.run(run_chat())
+            # Use simple asyncio.run for the streaming task
+            full_response, used_model = asyncio.run(run_chat())
 
             if used_model and used_model != "System":
                 # Add to local state
@@ -179,4 +179,5 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                 st.session_state.messages.pop()
         except Exception as e:
             st.error(f"Critical Application Error: {e}")
-            st.session_state.messages.pop()
+            if st.session_state.messages:
+                st.session_state.messages.pop()
