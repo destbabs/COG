@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+gunicorn
+streamlit
+supabase
+postgrest
+google-genai
+pydantic-settings
+python-dotenv
+jinja2

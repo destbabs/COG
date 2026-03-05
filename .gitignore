@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+.pytest_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# App Storage (Local mirrors)
+app/storage/*.json
+
+# Extras
+ideas.txt
+prompt.txt
+PROCESS.md

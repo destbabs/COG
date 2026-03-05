@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project COG</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Google Fonts for that premium feel -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Inter:wght@400;500;600&family=Roboto+Mono&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar (Optional aesthetic) -->
+        <aside class="sidebar">
+            <div class="brand-logo">Project COG</div>
+            <div class="new-chat" id="new-chat-btn">
+                <span>+ New Chat</span>
+            </div>
+            <div class="history-list" id="history-list">
+                <!-- Dynamically populated -->
+            </div>
+            <div class="user-profile">
+                <div class="avatar">U</div>
+                <div class="user-info">
+                    <span>USER</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-container">
+            <div class="chat-header">
+                <span class="model-name">System: Online</span>
+            </div>
+
+            <div id="chat-history" class="chat-history">
+                <div class="welcome-message">
+                    <h1>PROJECT COG</h1>
+                    <p>Awaiting input.</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-container">
+                    <textarea id="message-input" placeholder="Enter a prompt here" rows="1"></textarea>
+                    <button id="send-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor" />
+                        </svg>
+                    </button>
+                </div>
+
+            </div>
+        </main>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
